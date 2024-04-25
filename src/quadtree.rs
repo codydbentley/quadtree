@@ -1,9 +1,9 @@
 use crate::list::List;
 
 pub trait Visitor {
-    fn entity(&mut self, entity_id: usize, x: i32, y: i32, width: i32, height: i32);
-    fn leaf(&mut self, depth: u8, x: i32, y: i32, width: i32, height: i32);
-    fn branch(&mut self, depth: u8, x: i32, y: i32, width: i32, height: i32);
+    fn entity(&mut self, entity_id: usize, idx: usize, next_entity: Option<usize>, x: i32, y: i32, width: i32, height: i32);
+    fn leaf(&mut self, depth: u8, idx: usize, num_children: Option<usize>, first_entity: Option<usize>, x: i32, y: i32, width: i32, height: i32);
+    fn branch(&mut self, depth: u8, idx: usize, first_leaf: usize, x: i32, y: i32, width: i32, height: i32);
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -155,7 +155,7 @@ impl Quadtree {
             if node_idx.is_some() {
                 // Remove the element node.
                 let next_index = self.entity_nodes.get(node_idx.unwrap()).next;
-                if prev_index == None {
+                if prev_index.is_none() {
                     self.nodes.get_mut(nd_data_idx).first_child = next_index;
                 } else {
                     self.entity_nodes.get_mut(prev_index.unwrap()).next = next_index;
@@ -163,11 +163,11 @@ impl Quadtree {
                 self.entity_nodes.erase(node_idx.unwrap());
 
                 // Decrement the leaf element count.
-                let fc = self.nodes.get(nd_data_idx).first_child.unwrap();
-                if fc == 0 {
-                    self.nodes.get_mut(nd_data_idx).first_child = None;
+                let num_children = self.nodes.get(nd_data_idx).num_children.unwrap();
+                if num_children == 0 {
+                    self.nodes.get_mut(nd_data_idx).num_children = None;
                 } else {
-                    self.nodes.get_mut(nd_data_idx).first_child = Some(fc-1);
+                    self.nodes.get_mut(nd_data_idx).num_children = Some(num_children-1);
                 }
             }
         }
@@ -180,7 +180,7 @@ impl Quadtree {
         let mut to_process = List::<usize>::default();
 
         // Only process the root if it's not a leaf.
-        if self.nodes.get(self.root.idx).num_children == None {
+        if self.nodes.get(self.root.idx).num_children.is_none() {
             // Push the root index to the stack.
             to_process.push(self.root.idx);
         }
@@ -188,7 +188,7 @@ impl Quadtree {
         while to_process.cursor() > 0 {
             // Pop a node from the stack.
             let node_idx = to_process.pop();
-            let node = *self.nodes.get(node_idx);
+            let node = self.nodes.get(node_idx);
             let mut num_empty_leaves = 0;
 
             // Loop through the children.
@@ -197,8 +197,8 @@ impl Quadtree {
                 // Increment empty leaf count if the child is an empty
                 // leaf. Otherwise, if the child is a branch, add it to
                 // the stack to be processed in the next iteration.
-                let child_node = *self.nodes.get(child_idx);
-                if child_node.num_children == None {
+                let child_node = self.nodes.get(child_idx);
+                if child_node.num_children.is_none() {
                     // Push the child index to the stack.
                     to_process.push(child_idx);
                 } else if child_node.num_children.unwrap() == 0 {
@@ -280,7 +280,8 @@ impl Quadtree {
         while to_process.cursor() > 0 {
             let nd_data = to_process.pop();
 
-            if self.nodes.get(nd_data.idx).num_children == None {
+            let node = self.nodes.get(nd_data.idx);
+            if node.num_children.is_none() {
                 // Push the children of the branch to the stack.
                 let fc = self.nodes.get(nd_data.idx).first_child.unwrap();
                 let qx = nd_data.hx >> 1;
@@ -295,6 +296,8 @@ impl Quadtree {
                 to_process.push(NodeData{idx:fc + 3, depth:nd_data.depth + 1, x:r, y:b, hx:qx, hy:qy});
                 visitor.branch(
                     nd_data.depth,
+                    nd_data.idx,
+                    fc,
                     nd_data.x,
                     nd_data.y,
                     nd_data.hx << 1,
@@ -303,6 +306,9 @@ impl Quadtree {
             } else {
                 visitor.leaf(
                     nd_data.depth,
+                    nd_data.idx,
+                    node.num_children,
+                    node.first_child,
                     nd_data.x,
                     nd_data.y,
                     nd_data.hx << 1,
@@ -316,7 +322,7 @@ impl Quadtree {
                     let h = entity.bottom - entity.top;
                     let x = entity.left + (w>>1);
                     let y = entity.top + (h>>1);
-                    visitor.entity(entity_node.entity, x, y, w, h);
+                    visitor.entity(entity_node.entity, node_idx.unwrap(), entity_node.next, x, y, w, h);
                     node_idx = entity_node.next
                 }
             }
@@ -341,7 +347,7 @@ impl Quadtree {
 
         while to_process.cursor() > 0 {
             let nd_data = to_process.pop();
-            if self.nodes.get(nd_data.idx).num_children != None {
+            if self.nodes.get(nd_data.idx).num_children.is_some() {
                 leaves.push(nd_data);
             } else {
                 let fc = self.nodes.get(nd_data.idx).first_child.unwrap();
@@ -429,7 +435,7 @@ impl Quadtree {
         if self.nodes.get(node_data.idx).num_children.unwrap() == (self.max_entities as usize) && node_data.depth < self.max_depth {
             // Transfer elements from the leaf node to a list of elements.
             let mut entities = List::<usize>::default();
-            while self.nodes.get(node_data.idx).first_child != None {
+            while self.nodes.get(node_data.idx).first_child.is_some() {
                 let index = self.nodes.get(node_data.idx).first_child;
                 let e_node = *self.entity_nodes.get(index.unwrap());
 
@@ -486,7 +492,7 @@ mod tests {
             self.entities.clear();
             self.leaves.clear();
             self.branches.clear();
-            println!("/////// RESET ///////")
+            println!("\n/////// RESET ///////\n")
         }
 
         fn assert_counts(&self, entities: usize, leaves: usize, branches: usize) {
@@ -497,18 +503,18 @@ mod tests {
     }
 
     impl Visitor for TestVisitor {
-        fn entity(&mut self, entity_id: usize, _x: i32, _y: i32, _width: i32, _height: i32) {
-            println!("----[EN: {entity_id}]");
+        fn entity(&mut self, entity_id: usize, idx: usize, next_entity: Option<usize>, _x: i32, _y: i32, _width: i32, _height: i32) {
+            println!("----[EN: {entity_id} idx:{idx}->{next_entity:?}]");
             self.entities.push(entity_id);
         }
 
-        fn leaf(&mut self, depth: u8, x: i32, y: i32, w: i32, h: i32) {
-            println!("--[LF: {depth} x:{x}, y:{y}, w:{w}, h:{h}]");
+        fn leaf(&mut self, depth: u8, idx: usize, num_children: Option<usize>, first_entity: Option<usize>, x: i32, y: i32, w: i32, h: i32) {
+            println!("--[LF: {idx}, children: {num_children:?}, first_entity: {first_entity:?}, d:{depth}, x:{x}, y:{y}, w:{w}, h:{h}]");
             self.leaves.push(depth);
         }
 
-        fn branch(&mut self, depth: u8, x: i32, y: i32, w: i32, h: i32) {
-            println!("[BR: {depth} x:{x}, y:{y}, w:{w}, h:{h}]");
+        fn branch(&mut self, depth: u8, idx: usize, first_leaf: usize, x: i32, y: i32, w: i32, h: i32) {
+            println!("[BR: {idx},  d:{depth}, first_leaf:{first_leaf}, x:{x}, y:{y}, w:{w}, h:{h}]");
             self.branches.push(depth);
         }
     }
@@ -744,6 +750,86 @@ mod tests {
 
     #[test]
     fn remove_and_cleanup() {
-        // todo!()
+        let mut qt = Quadtree::new(0.0, 0.0, 100.0, 100.0, 4);
+
+        // Populate the quadtree
+        // Large centered entity
+        qt.insert(-30.0, -30.0, 70.0, 70.0); // 0
+
+        // NW
+        qt.insert(-40.0, 30.0, -30.0, 40.0); // 1
+        qt.insert(-40.0, 10.0, -30.0, 20.0); // 2
+        qt.insert(-20.0, 30.0, -10.0, 40.0); // 3
+        qt.insert(-20.0, 10.0, -10.0, 20.0); // 4
+
+        // NE
+        qt.insert(30.0, 30.0, 40.0, 40.0); // 5
+        qt.insert(30.0, 10.0, 40.0, 20.0); // 6
+        qt.insert(10.0, 30.0, 20.0, 40.0); // 7
+        qt.insert(10.0, 10.0, 20.0, 20.0); // 8
+
+        // SW
+        qt.insert(-40.0, -40.0, -30.0, -30.0); // 9
+        qt.insert(-40.0, -20.0, -30.0, -10.0); // 10
+        qt.insert(-20.0, -40.0, -10.0, -30.0); // 11
+        qt.insert(-20.0, -20.0, -10.0, -10.0); // 12
+
+        // SE
+        qt.insert(30.0, -40.0, 40.0, -30.0); // 13
+        qt.insert(30.0, -20.0, 40.0, -10.0); // 14
+        qt.insert(10.0, -40.0, 20.0, -30.0); // 15
+        qt.insert(10.0, -20.0, 20.0, -10.0); // 16
+
+        let mut tv = TestVisitor::new();
+        qt.traverse(&mut tv);
+        tv.assert_counts(32, 16, 5);
+        tv.reset();
+
+        qt.remove(16);
+        qt.remove(15);
+        qt.remove(14);
+        qt.remove(13);
+        qt.traverse(&mut tv);
+        tv.assert_counts(28, 16, 5);
+        tv.reset();
+
+        qt.remove(12);
+        qt.remove(11);
+        qt.remove(10);
+        qt.remove(9);
+        qt.traverse(&mut tv);
+        tv.assert_counts(24, 16, 5);
+        tv.reset();
+
+        qt.remove(8);
+        qt.remove(7);
+        qt.remove(6);
+        qt.remove(5);
+        qt.traverse(&mut tv);
+        tv.assert_counts(20, 16, 5);
+        tv.reset();
+
+        qt.remove(4);
+        qt.remove(3);
+        qt.remove(2);
+        qt.remove(1);
+        qt.traverse(&mut tv);
+        tv.assert_counts(16, 16, 5);
+        tv.reset();
+
+        qt.remove(0);
+        qt.traverse(&mut tv);
+        tv.assert_counts(0, 16, 5);
+        tv.reset();
+
+        qt.cleanup();
+        qt.traverse(&mut tv);
+        tv.assert_counts(0, 4, 1);
+        tv.reset();
+
+        qt.cleanup();
+        qt.traverse(&mut tv);
+        tv.assert_counts(0, 1, 0);
+        tv.reset();
     }
 }
