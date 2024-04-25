@@ -2,7 +2,8 @@ use std::fmt::Debug;
 
 #[derive(Clone, Debug)]
 pub struct List<T>
-    where T: Copy + Clone + Debug
+where
+    T: Copy + Clone + Debug,
 {
     data: Vec<T>,
     cursor: usize,
@@ -11,8 +12,8 @@ pub struct List<T>
 }
 
 impl<T> List<T>
-    where
-        T: Copy + Debug + Default
+where
+    T: Copy + Debug + Default,
 {
     pub fn new(capacity: usize) -> Self {
         let mut data = Vec::new();
@@ -73,8 +74,8 @@ impl<T> List<T>
             Some(vacant) => {
                 self.data[vacant] = element;
                 vacant
-            },
-            None => self.push(element)
+            }
+            None => self.push(element),
         }
     }
 
@@ -84,8 +85,8 @@ impl<T> List<T>
 }
 
 impl<T> Default for List<T>
-    where
-        T: Copy + Debug + Default
+where
+    T: Copy + Debug + Default,
 {
     fn default() -> Self {
         List::new(128)
@@ -97,9 +98,7 @@ pub trait FreeVec {
 }
 
 impl<T> FreeVec for Vec<T> {
-    fn something() {
-
-    }
+    fn something() {}
 }
 
 #[cfg(test)]

@@ -1,9 +1,37 @@
 use crate::list::List;
 
 pub trait Visitor {
-    fn entity(&mut self, entity_id: usize, idx: usize, next_entity: Option<usize>, x: i32, y: i32, width: i32, height: i32);
-    fn leaf(&mut self, depth: u8, idx: usize, num_children: Option<usize>, first_entity: Option<usize>, x: i32, y: i32, width: i32, height: i32);
-    fn branch(&mut self, depth: u8, idx: usize, first_leaf: usize, x: i32, y: i32, width: i32, height: i32);
+    fn entity(
+        &mut self,
+        entity_id: usize,
+        idx: usize,
+        next_entity: Option<usize>,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    );
+    fn leaf(
+        &mut self,
+        depth: u8,
+        idx: usize,
+        num_children: Option<usize>,
+        first_entity: Option<usize>,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    );
+    fn branch(
+        &mut self,
+        depth: u8,
+        idx: usize,
+        first_leaf: usize,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    );
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -138,7 +166,13 @@ impl Quadtree {
     pub fn remove(&mut self, entity_idx: usize) {
         // Find the leaves.
         let entity = self.entities.get(entity_idx);
-        let leaves = self.find_leaves(self.root, entity.left, entity.top, entity.right, entity.bottom);
+        let leaves = self.find_leaves(
+            self.root,
+            entity.left,
+            entity.top,
+            entity.right,
+            entity.bottom,
+        );
 
         // For each leaf node, remove the element node.
         for i in 0..leaves.cursor() {
@@ -147,7 +181,9 @@ impl Quadtree {
             // Walk the list until we find the element node.
             let mut node_idx = self.nodes.get(nd_data_idx).first_child;
             let mut prev_index = None;
-            while node_idx.is_some() && self.entity_nodes.get(node_idx.unwrap()).entity != entity_idx {
+            while node_idx.is_some()
+                && self.entity_nodes.get(node_idx.unwrap()).entity != entity_idx
+            {
                 prev_index = node_idx;
                 node_idx = self.entity_nodes.get(node_idx.unwrap()).next;
             }
@@ -167,7 +203,7 @@ impl Quadtree {
                 if num_children == 0 {
                     self.nodes.get_mut(nd_data_idx).num_children = None;
                 } else {
-                    self.nodes.get_mut(nd_data_idx).num_children = Some(num_children-1);
+                    self.nodes.get_mut(nd_data_idx).num_children = Some(num_children - 1);
                 }
             }
         }
@@ -229,7 +265,14 @@ impl Quadtree {
         self.query_omit(x1, y1, x2, y2, None)
     }
 
-    pub fn query_omit(&self, x1: f32, y1: f32, x2: f32, y2: f32, omit_entity_id: Option<usize>) -> Vec<usize> {
+    pub fn query_omit(
+        &self,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        omit_entity_id: Option<usize>,
+    ) -> Vec<usize> {
         let mut out = Vec::<usize>::new();
 
         // Find the leaves that intersect the specified query rectangle.
@@ -254,15 +297,15 @@ impl Quadtree {
                 if !seen[entity_node.entity]
                     && !(omit_entity_id.is_some() && entity_node.entity == omit_entity_id.unwrap())
                     && Self::intersect(
-                    q_left,
-                    q_top,
-                    q_right,
-                    q_bottom,
-                    entity.left,
-                    entity.top,
-                    entity.right,
-                    entity.bottom,
-                )
+                        q_left,
+                        q_top,
+                        q_right,
+                        q_bottom,
+                        entity.left,
+                        entity.top,
+                        entity.right,
+                        entity.bottom,
+                    )
                 {
                     out.push(entity_node.entity);
                     seen[entity_node.entity] = true;
@@ -290,10 +333,38 @@ impl Quadtree {
                 let t = nd_data.y - qy;
                 let r = nd_data.x + qx;
                 let b = nd_data.y + qy;
-                to_process.push(NodeData{idx:fc + 0, depth:nd_data.depth + 1, x:l, y:t, hx:qx, hy:qy});
-                to_process.push(NodeData{idx:fc + 1, depth:nd_data.depth + 1, x:r, y:t, hx:qx, hy:qy});
-                to_process.push(NodeData{idx:fc + 2, depth:nd_data.depth + 1, x:l, y:b, hx:qx, hy:qy});
-                to_process.push(NodeData{idx:fc + 3, depth:nd_data.depth + 1, x:r, y:b, hx:qx, hy:qy});
+                to_process.push(NodeData {
+                    idx: fc + 0,
+                    depth: nd_data.depth + 1,
+                    x: l,
+                    y: t,
+                    hx: qx,
+                    hy: qy,
+                });
+                to_process.push(NodeData {
+                    idx: fc + 1,
+                    depth: nd_data.depth + 1,
+                    x: r,
+                    y: t,
+                    hx: qx,
+                    hy: qy,
+                });
+                to_process.push(NodeData {
+                    idx: fc + 2,
+                    depth: nd_data.depth + 1,
+                    x: l,
+                    y: b,
+                    hx: qx,
+                    hy: qy,
+                });
+                to_process.push(NodeData {
+                    idx: fc + 3,
+                    depth: nd_data.depth + 1,
+                    x: r,
+                    y: b,
+                    hx: qx,
+                    hy: qy,
+                });
                 visitor.branch(
                     nd_data.depth,
                     nd_data.idx,
@@ -316,13 +387,21 @@ impl Quadtree {
                 );
                 let mut node_idx = self.nodes.get(nd_data.idx).first_child;
                 while node_idx != None {
-                    let entity_node= self.entity_nodes.get(node_idx.unwrap());
+                    let entity_node = self.entity_nodes.get(node_idx.unwrap());
                     let entity = self.entities.get(entity_node.entity);
                     let w = entity.right - entity.left;
                     let h = entity.bottom - entity.top;
-                    let x = entity.left + (w>>1);
-                    let y = entity.top + (h>>1);
-                    visitor.entity(entity_node.entity, node_idx.unwrap(), entity_node.next, x, y, w, h);
+                    let x = entity.left + (w >> 1);
+                    let y = entity.top + (h >> 1);
+                    visitor.entity(
+                        entity_node.entity,
+                        node_idx.unwrap(),
+                        entity_node.next,
+                        x,
+                        y,
+                        w,
+                        h,
+                    );
                     node_idx = entity_node.next
                 }
             }
@@ -432,7 +511,9 @@ impl Quadtree {
         self.nodes.get_mut(node_data.idx).first_child = Some(e_node);
 
         // If the leaf is full, split it.
-        if self.nodes.get(node_data.idx).num_children.unwrap() == (self.max_entities as usize) && node_data.depth < self.max_depth {
+        if self.nodes.get(node_data.idx).num_children.unwrap() == (self.max_entities as usize)
+            && node_data.depth < self.max_depth
+        {
             // Transfer elements from the leaf node to a list of elements.
             let mut entities = List::<usize>::default();
             while self.nodes.get(node_data.idx).first_child.is_some() {
@@ -463,7 +544,7 @@ impl Quadtree {
         } else {
             // Increment the leaf element count.
             let num_children = self.nodes.get_mut(node_data.idx).num_children.unwrap();
-            self.nodes.get_mut(node_data.idx).num_children = Some(num_children+1);
+            self.nodes.get_mut(node_data.idx).num_children = Some(num_children + 1);
         }
     }
 }
@@ -484,7 +565,7 @@ mod tests {
             Self {
                 entities: Vec::new(),
                 leaves: Vec::new(),
-                branches: Vec::new()
+                branches: Vec::new(),
             }
         }
 
@@ -503,18 +584,48 @@ mod tests {
     }
 
     impl Visitor for TestVisitor {
-        fn entity(&mut self, entity_id: usize, idx: usize, next_entity: Option<usize>, _x: i32, _y: i32, _width: i32, _height: i32) {
+        fn entity(
+            &mut self,
+            entity_id: usize,
+            idx: usize,
+            next_entity: Option<usize>,
+            _x: i32,
+            _y: i32,
+            _width: i32,
+            _height: i32,
+        ) {
             println!("----[EN: {entity_id} idx:{idx}->{next_entity:?}]");
             self.entities.push(entity_id);
         }
 
-        fn leaf(&mut self, depth: u8, idx: usize, num_children: Option<usize>, first_entity: Option<usize>, x: i32, y: i32, w: i32, h: i32) {
+        fn leaf(
+            &mut self,
+            depth: u8,
+            idx: usize,
+            num_children: Option<usize>,
+            first_entity: Option<usize>,
+            x: i32,
+            y: i32,
+            w: i32,
+            h: i32,
+        ) {
             println!("--[LF: {idx}, children: {num_children:?}, first_entity: {first_entity:?}, d:{depth}, x:{x}, y:{y}, w:{w}, h:{h}]");
             self.leaves.push(depth);
         }
 
-        fn branch(&mut self, depth: u8, idx: usize, first_leaf: usize, x: i32, y: i32, w: i32, h: i32) {
-            println!("[BR: {idx},  d:{depth}, first_leaf:{first_leaf}, x:{x}, y:{y}, w:{w}, h:{h}]");
+        fn branch(
+            &mut self,
+            depth: u8,
+            idx: usize,
+            first_leaf: usize,
+            x: i32,
+            y: i32,
+            w: i32,
+            h: i32,
+        ) {
+            println!(
+                "[BR: {idx},  d:{depth}, first_leaf:{first_leaf}, x:{x}, y:{y}, w:{w}, h:{h}]"
+            );
             self.branches.push(depth);
         }
     }
@@ -534,9 +645,9 @@ mod tests {
             // 32 + (32/2) = 48
             // This means 47 is the upper bound of depth 4
             // and 48 is the lower bound of depth 5.
-            let prev_x = x-1;
+            let prev_x = x - 1;
             let power: i32 = 1 << x;
-            let next_lower = power + (power>>1);
+            let next_lower = power + (power >> 1);
             let prev_upper = next_lower - 1;
             assert_eq!(Quadtree::calc_max_depth(prev_upper, prev_upper), prev_x);
             assert_eq!(Quadtree::calc_max_depth(next_lower, next_lower), x);
