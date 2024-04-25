@@ -891,11 +891,41 @@ mod tests {
         qt.insert(10.0, -40.0, 20.0, -30.0); // 15
         qt.insert(10.0, -20.0, 20.0, -10.0); // 16
 
+        /***
+        Starting quadtree
+        |-----------------------|
+        | x x | x x | x x | x x |
+        |-----|-----|-----|-----|
+        | x x | x x | x x | x x |
+        |-----|-----|-----|-----|
+        | x x | x x | x x | x x |
+        |-----|-----|-----|-----|
+        | x x | x x | x x | x x |
+        |-----------------------|
+         */
         let mut tv = TestVisitor::new();
         qt.traverse(&mut tv);
         tv.assert_counts(32, 16, 5);
         tv.reset();
 
+        /***
+        Because we only clean up empty leaves/branches,
+        the entity with id 0 will still remain in the
+        leaves where we removed child elements. There is
+        definitely room for improvement here where we could
+        track the number of unique elements and collapse
+        a branch if the # of unique is less than
+        max_entities_per_region. Maybe in the future.
+        |-----------------------|
+        | x x | x x | x x | x x |
+        |-----|-----|-----|-----|
+        | x x | x x | x x | x x |
+        |-----|-----|-----|-----|
+        | x x | x x |  x  |  x  |
+        |-----|-----|-----|-----|
+        | x x | x x |  x  |  x  |
+        |-----------------------|
+         */
         qt.remove(16);
         qt.remove(15);
         qt.remove(14);
@@ -904,6 +934,17 @@ mod tests {
         tv.assert_counts(28, 16, 5);
         tv.reset();
 
+        /***
+        |-----------------------|
+        | x x | x x | x x | x x |
+        |-----|-----|-----|-----|
+        | x x | x x | x x | x x |
+        |-----|-----|-----|-----|
+        |  x  |  x  |  x  |  x  |
+        |-----|-----|-----|-----|
+        |  x  |  x  |  x  |  x  |
+        |-----------------------|
+         */
         qt.remove(12);
         qt.remove(11);
         qt.remove(10);
@@ -912,6 +953,17 @@ mod tests {
         tv.assert_counts(24, 16, 5);
         tv.reset();
 
+        /***
+        |-----------------------|
+        | x x | x x |  x  |  x  |
+        |-----|-----|-----|-----|
+        | x x | x x |  x  |  x  |
+        |-----|-----|-----|-----|
+        |  x  |  x  |  x  |  x  |
+        |-----|-----|-----|-----|
+        |  x  |  x  |  x  |  x  |
+        |-----------------------|
+         */
         qt.remove(8);
         qt.remove(7);
         qt.remove(6);
@@ -920,6 +972,17 @@ mod tests {
         tv.assert_counts(20, 16, 5);
         tv.reset();
 
+        /***
+        |-----------------------|
+        |  x  |  x  |  x  |  x  |
+        |-----|-----|-----|-----|
+        |  x  |  x  |  x  |  x  |
+        |-----|-----|-----|-----|
+        |  x  |  x  |  x  |  x  |
+        |-----|-----|-----|-----|
+        |  x  |  x  |  x  |  x  |
+        |-----------------------|
+         */
         qt.remove(4);
         qt.remove(3);
         qt.remove(2);
@@ -928,16 +991,42 @@ mod tests {
         tv.assert_counts(16, 16, 5);
         tv.reset();
 
+        /***
+        |-----------------------|
+        |     |     |     |     |
+        |-----|-----|-----|-----|
+        |     |     |     |     |
+        |-----|-----|-----|-----|
+        |     |     |     |     |
+        |-----|-----|-----|-----|
+        |     |     |     |     |
+        |-----------------------|
+         */
         qt.remove(0);
         qt.traverse(&mut tv);
         tv.assert_counts(0, 16, 5);
         tv.reset();
 
+        /***
+        First stage of cleanup
+        |-----------------------|
+        |           |           |
+        |           |           |
+        |           |           |
+        |-----------|-----------|
+        |           |           |
+        |           |           |
+        |           |           |
+        |-----------------------|
+         */
         qt.cleanup();
         qt.traverse(&mut tv);
         tv.assert_counts(0, 4, 1);
         tv.reset();
 
+        /***
+        Second stage of cleanup removes the root branch
+         */
         qt.cleanup();
         qt.traverse(&mut tv);
         tv.assert_counts(0, 1, 0);
