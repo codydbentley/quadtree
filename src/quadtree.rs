@@ -1,3 +1,4 @@
+use thiserror::Error;
 use crate::list::List;
 
 pub trait Visitor {
@@ -32,6 +33,14 @@ pub trait Visitor {
         width: i32,
         height: i32,
     );
+}
+
+#[derive(Error, Debug, PartialEq)]
+pub enum QuadtreeError {
+    #[error("x1 must be less than x2 and y1 must be less than y2")]
+    InsertHasInvertedBounds,
+    #[error("entity box is outside of the quadtree bounds")]
+    InsertIsOutOfBounds,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -152,15 +161,26 @@ impl Quadtree {
         depth
     }
 
-    pub fn insert(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) -> usize {
+    pub fn insert(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) -> Result<usize, QuadtreeError> {
+        if x1 >= x2 || y1 >= y2 {
+            return Err(QuadtreeError::InsertHasInvertedBounds)
+        }
+        let x1 = x1 as i32;
+        let y1 = y1 as i32;
+        let x2 = x2 as i32;
+        let y2 = y2 as i32;
+        if x1 < self.root.x - self.root.hx || x2 > self.root.x + self.root.hx ||
+            y1 < self.root.y - self.root.hy || y2 > self.root.y + self.root.hy {
+            return Err(QuadtreeError::InsertIsOutOfBounds)
+        }
         let new_entity_idx = self.entities.insert(Entity {
-            left: x1 as i32,
-            top: y1 as i32,
-            right: x2 as i32,
-            bottom: y2 as i32,
+            left: x1,
+            top: y1,
+            right: x2,
+            bottom: y2,
         });
         self.node_insert(self.root, new_entity_idx);
-        new_entity_idx
+        Ok(new_entity_idx)
     }
 
     pub fn remove(&mut self, entity_idx: usize) {
@@ -671,9 +691,9 @@ mod tests {
     }
 
     #[test]
-    fn insert_and_traverse() {
+    fn insert_and_traverse() -> Result<(), QuadtreeError> {
         let mut qt = Quadtree::new(0.0, 0.0, 100.0, 100.0, 4);
-        let entity = qt.insert(-30.0, -30.0, 70.0, 70.0);
+        let entity = qt.insert(-40.0, -40.0, 40.0, 40.0)?;
         assert_eq!(entity, 0);
 
         /***
@@ -709,10 +729,10 @@ mod tests {
         |           |           |
         |-----------------------|
          */
-        qt.insert(-40.0, 30.0, -30.0, 40.0);
-        qt.insert(-40.0, 10.0, -30.0, 20.0);
-        qt.insert(-20.0, 30.0, -10.0, 40.0);
-        qt.insert(-20.0, 10.0, -10.0, 20.0);
+        qt.insert(-40.0, 30.0, -30.0, 40.0)?;
+        qt.insert(-40.0, 10.0, -30.0, 20.0)?;
+        qt.insert(-20.0, 30.0, -10.0, 40.0)?;
+        qt.insert(-20.0, 10.0, -10.0, 20.0)?;
         qt.traverse(&mut tv);
         tv.assert_counts(11, 7, 2);
         tv.reset();
@@ -729,10 +749,10 @@ mod tests {
         |           |           |
         |-----------------------|
          */
-        qt.insert(30.0, 30.0, 40.0, 40.0);
-        qt.insert(30.0, 10.0, 40.0, 20.0);
-        qt.insert(10.0, 30.0, 20.0, 40.0);
-        qt.insert(10.0, 10.0, 20.0, 20.0);
+        qt.insert(30.0, 30.0, 40.0, 40.0)?;
+        qt.insert(30.0, 10.0, 40.0, 20.0)?;
+        qt.insert(10.0, 30.0, 20.0, 40.0)?;
+        qt.insert(10.0, 10.0, 20.0, 20.0)?;
         qt.traverse(&mut tv);
         tv.assert_counts(18, 10, 3);
         tv.reset();
@@ -749,10 +769,10 @@ mod tests {
         | x x | x x |           |
         |-----------------------|
          */
-        qt.insert(-40.0, -40.0, -30.0, -30.0);
-        qt.insert(-40.0, -20.0, -30.0, -10.0);
-        qt.insert(-20.0, -40.0, -10.0, -30.0);
-        qt.insert(-20.0, -20.0, -10.0, -10.0);
+        qt.insert(-40.0, -40.0, -30.0, -30.0)?;
+        qt.insert(-40.0, -20.0, -30.0, -10.0)?;
+        qt.insert(-20.0, -40.0, -10.0, -30.0)?;
+        qt.insert(-20.0, -20.0, -10.0, -10.0)?;
         qt.traverse(&mut tv);
         tv.assert_counts(25, 13, 4);
         tv.reset();
@@ -769,29 +789,57 @@ mod tests {
         | x x | x x | x x | x x |
         |-----------------------|
          */
-        qt.insert(30.0, -40.0, 40.0, -30.0);
-        qt.insert(30.0, -20.0, 40.0, -10.0);
-        qt.insert(10.0, -40.0, 20.0, -30.0);
-        qt.insert(10.0, -20.0, 20.0, -10.0);
+        qt.insert(30.0, -40.0, 40.0, -30.0)?;
+        qt.insert(30.0, -20.0, 40.0, -10.0)?;
+        qt.insert(10.0, -40.0, 20.0, -30.0)?;
+        qt.insert(10.0, -20.0, 20.0, -10.0)?;
         qt.traverse(&mut tv);
         tv.assert_counts(32, 16, 5);
         tv.reset();
+        Ok(())
     }
 
     #[test]
-    fn query_and_omit() {
+    fn insert_error_handling() -> Result<(), QuadtreeError> {
+        let mut qt = Quadtree::new(0.0, 0.0, 100.0, 100.0, 4);
+
+        // entity box checks
+        let x2_less_than_x1 = qt.insert(1.0, 1.0, -1.0, 2.0);
+        let x2_same_as_x1 = qt.insert(1.0, 1.0, 1.0, 2.0);
+        let y2_less_than_y1 = qt.insert(1.0, 1.0, 2.0, -1.0);
+        let y2_same_as_y1 = qt.insert(1.0, 1.0, 2.0, 1.0);
+        assert!(x2_less_than_x1.is_err_and(|e| e == QuadtreeError::InsertHasInvertedBounds));
+        assert!(x2_same_as_x1.is_err_and(|e| e == QuadtreeError::InsertHasInvertedBounds));
+        assert!(y2_less_than_y1.is_err_and(|e| e == QuadtreeError::InsertHasInvertedBounds));
+        assert!(y2_same_as_y1.is_err_and(|e| e == QuadtreeError::InsertHasInvertedBounds));
+
+        // out of bounds checks
+        let x1_out_of_bounds = qt.insert(-51.0, 0.0, 0.0, 1.0);
+        let x2_out_of_bounds = qt.insert(0.0, 0.0, 51.0, 1.0);
+        let y1_out_of_bounds = qt.insert(0.0, -51.0, 1.0, 0.0);
+        let y2_out_of_bounds = qt.insert(0.0, 0.0, 1.0, 51.0);
+        assert!(x1_out_of_bounds.is_err_and(|e| e == QuadtreeError::InsertIsOutOfBounds));
+        assert!(x2_out_of_bounds.is_err_and(|e| e == QuadtreeError::InsertIsOutOfBounds));
+        assert!(y1_out_of_bounds.is_err_and(|e| e == QuadtreeError::InsertIsOutOfBounds));
+        assert!(y2_out_of_bounds.is_err_and(|e| e == QuadtreeError::InsertIsOutOfBounds));
+
+        Ok(())
+    }
+
+    #[test]
+    fn query_and_omit() -> Result<(), QuadtreeError> {
         let mut qt = Quadtree::new(0.0, 0.0, 100.0, 100.0, 4);
 
         // Cover almost entire quadtree root
-        let entity = qt.insert(-30.0, -30.0, 70.0, 70.0);
+        let entity = qt.insert(-40.0, -40.0, 40.0, 40.0)?;
         let q = qt.query(-10.0, -10.0, 10.0, 10.0);
         assert!(q.contains(&0));
 
         // NW
-        qt.insert(-40.0, 30.0, -30.0, 40.0);
-        qt.insert(-40.0, 10.0, -30.0, 20.0);
-        qt.insert(-20.0, 30.0, -10.0, 40.0);
-        qt.insert(-20.0, 10.0, -10.0, 20.0);
+        qt.insert(-40.0, 30.0, -30.0, 40.0)?;
+        qt.insert(-40.0, 10.0, -30.0, 20.0)?;
+        qt.insert(-20.0, 30.0, -10.0, 40.0)?;
+        qt.insert(-20.0, 10.0, -10.0, 20.0)?;
         let q = qt.query(-50.0, 0.0, 0.0, 50.0);
         let q_omit = qt.query_omit(-50.0, 0.0, 0.0, 50.0, Some(entity));
         assert_eq!(q.len(), 5);
@@ -803,10 +851,10 @@ mod tests {
         assert!(!q_omit.contains(&0) && q_omit.len() == 4);
 
         // NE
-        qt.insert(30.0, 30.0, 40.0, 40.0);
-        qt.insert(30.0, 10.0, 40.0, 20.0);
-        qt.insert(10.0, 30.0, 20.0, 40.0);
-        qt.insert(10.0, 10.0, 20.0, 20.0);
+        qt.insert(30.0, 30.0, 40.0, 40.0)?;
+        qt.insert(30.0, 10.0, 40.0, 20.0)?;
+        qt.insert(10.0, 30.0, 20.0, 40.0)?;
+        qt.insert(10.0, 10.0, 20.0, 20.0)?;
         let q = qt.query(0.0, 0.0, 50.0, 50.0);
         let q_omit = qt.query_omit(0.0, 0.0, 50.0, 50.0, Some(entity));
         assert_eq!(q.len(), 5);
@@ -818,10 +866,10 @@ mod tests {
         assert!(!q_omit.contains(&0) && q_omit.len() == 4);
 
         // SW
-        qt.insert(-40.0, -40.0, -30.0, -30.0);
-        qt.insert(-40.0, -20.0, -30.0, -10.0);
-        qt.insert(-20.0, -40.0, -10.0, -30.0);
-        qt.insert(-20.0, -20.0, -10.0, -10.0);
+        qt.insert(-40.0, -40.0, -30.0, -30.0)?;
+        qt.insert(-40.0, -20.0, -30.0, -10.0)?;
+        qt.insert(-20.0, -40.0, -10.0, -30.0)?;
+        qt.insert(-20.0, -20.0, -10.0, -10.0)?;
         let q = qt.query(-50.0, -50.0, 0.0, 0.0);
         let q_omit = qt.query_omit(-50.0, -50.0, 0.0, 0.0, Some(entity));
         assert_eq!(q.len(), 5);
@@ -833,10 +881,10 @@ mod tests {
         assert!(!q_omit.contains(&0) && q_omit.len() == 4);
 
         // SE
-        qt.insert(30.0, -40.0, 40.0, -30.0);
-        qt.insert(30.0, -20.0, 40.0, -10.0);
-        qt.insert(10.0, -40.0, 20.0, -30.0);
-        qt.insert(10.0, -20.0, 20.0, -10.0);
+        qt.insert(30.0, -40.0, 40.0, -30.0)?;
+        qt.insert(30.0, -20.0, 40.0, -10.0)?;
+        qt.insert(10.0, -40.0, 20.0, -30.0)?;
+        qt.insert(10.0, -20.0, 20.0, -10.0)?;
         let q = qt.query(0.0, -50.0, 50.0, 0.0);
         let q_omit = qt.query_omit(0.0, -50.0, 50.0, 0.0, Some(entity));
         assert_eq!(q.len(), 5);
@@ -857,39 +905,40 @@ mod tests {
         assert!(q.contains(&12));
         assert!(q.contains(&16));
         assert!(!q_omit.contains(&0) && q_omit.len() == 4);
+        Ok(())
     }
 
     #[test]
-    fn remove_and_cleanup() {
+    fn remove_and_cleanup() -> Result<(), QuadtreeError> {
         let mut qt = Quadtree::new(0.0, 0.0, 100.0, 100.0, 4);
 
         // Populate the quadtree
         // Large centered entity
-        qt.insert(-30.0, -30.0, 70.0, 70.0); // 0
+        qt.insert(-40.0, -40.0, 40.0, 40.0)?; // 0
 
         // NW
-        qt.insert(-40.0, 30.0, -30.0, 40.0); // 1
-        qt.insert(-40.0, 10.0, -30.0, 20.0); // 2
-        qt.insert(-20.0, 30.0, -10.0, 40.0); // 3
-        qt.insert(-20.0, 10.0, -10.0, 20.0); // 4
+        qt.insert(-40.0, 30.0, -30.0, 40.0)?; // 1
+        qt.insert(-40.0, 10.0, -30.0, 20.0)?; // 2
+        qt.insert(-20.0, 30.0, -10.0, 40.0)?; // 3
+        qt.insert(-20.0, 10.0, -10.0, 20.0)?; // 4
 
         // NE
-        qt.insert(30.0, 30.0, 40.0, 40.0); // 5
-        qt.insert(30.0, 10.0, 40.0, 20.0); // 6
-        qt.insert(10.0, 30.0, 20.0, 40.0); // 7
-        qt.insert(10.0, 10.0, 20.0, 20.0); // 8
+        qt.insert(30.0, 30.0, 40.0, 40.0)?; // 5
+        qt.insert(30.0, 10.0, 40.0, 20.0)?; // 6
+        qt.insert(10.0, 30.0, 20.0, 40.0)?; // 7
+        qt.insert(10.0, 10.0, 20.0, 20.0)?; // 8
 
         // SW
-        qt.insert(-40.0, -40.0, -30.0, -30.0); // 9
-        qt.insert(-40.0, -20.0, -30.0, -10.0); // 10
-        qt.insert(-20.0, -40.0, -10.0, -30.0); // 11
-        qt.insert(-20.0, -20.0, -10.0, -10.0); // 12
+        qt.insert(-40.0, -40.0, -30.0, -30.0)?; // 9
+        qt.insert(-40.0, -20.0, -30.0, -10.0)?; // 10
+        qt.insert(-20.0, -40.0, -10.0, -30.0)?; // 11
+        qt.insert(-20.0, -20.0, -10.0, -10.0)?; // 12
 
         // SE
-        qt.insert(30.0, -40.0, 40.0, -30.0); // 13
-        qt.insert(30.0, -20.0, 40.0, -10.0); // 14
-        qt.insert(10.0, -40.0, 20.0, -30.0); // 15
-        qt.insert(10.0, -20.0, 20.0, -10.0); // 16
+        qt.insert(30.0, -40.0, 40.0, -30.0)?; // 13
+        qt.insert(30.0, -20.0, 40.0, -10.0)?; // 14
+        qt.insert(10.0, -40.0, 20.0, -30.0)?; // 15
+        qt.insert(10.0, -20.0, 20.0, -10.0)?; // 16
 
         /***
         Starting quadtree
@@ -1031,5 +1080,6 @@ mod tests {
         qt.traverse(&mut tv);
         tv.assert_counts(0, 1, 0);
         tv.reset();
+        Ok(())
     }
 }
